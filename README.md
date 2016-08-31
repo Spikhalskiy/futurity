@@ -3,6 +3,14 @@ A simple tool to convert plain old Java Future to CompletableFuture
 
 ## How to use?
 
+```
+<dependency>
+    <groupId>com.spikhalskiy.futurity</groupId>
+    <artifactId>futurity-core</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
 ```java
 Future oldFuture = ...;
 CompletableFuture profit = Futurity.shift(oldFuture);
