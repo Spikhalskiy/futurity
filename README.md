@@ -18,9 +18,9 @@ CompletableFuture profit = Futurity.shift(oldFuture);
 
 ## Motivation
 
-You have an old code, which is asynchronous, but using pre Java 8 API
+You have an old code, which is asynchronous, but uses pre Java 8 API
 and you want to convert Future to CompletableFuture to get full power
-of new api.
+of the new api.
 
 It could be tricky and require update of dependencies. For example,
 if library that perform IO doesn't support nor CompletableFuture neither
@@ -57,7 +57,9 @@ futurity uses only one thread.
 Futurity could be a good choice for a migration and to be a mediator
 between new code that wants to use all features provided by
 CompletableFuture (CompletionStage) and old code, which supports plain
-Future only.
+Future only. Futurity is either good for tests code where you don't want
+to spend much time for supporting CompletableFuture properly and want to
+leave code with Futures and use it outside in CompletableFuture way.
 
 ## Caution
 
