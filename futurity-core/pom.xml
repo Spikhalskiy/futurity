@@ -10,6 +10,7 @@
 
     <artifactId>futurity-core</artifactId>
     <version>0.1.1-SNAPSHOT</version>
+    <packaging>jar</packaging>
     <name>futurity/core</name>
 
     <build>
