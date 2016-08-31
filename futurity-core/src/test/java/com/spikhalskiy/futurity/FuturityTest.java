@@ -49,8 +49,8 @@ public class FuturityTest {
         CompletableFuture<Boolean> shift = Futurity.shift(origin);
         assertFalse(shift.isDone());
         futureResult.set(Boolean.TRUE);
-        Thread.sleep(100);
-        await().pollInterval(1, TimeUnit.MILLISECONDS).atMost(20, TimeUnit.MILLISECONDS).until(shift::isDone);
+        await().pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
+               .atMost(1, TimeUnit.SECONDS).until(shift::isDone);
     }
 
     @Test(expected = IllegalStateException.class)
@@ -61,7 +61,8 @@ public class FuturityTest {
         assertFalse(shift.isDone());
         Throwable ex = new IllegalStateException();
         exceptionResult.set(ex);
-        await().pollInterval(1, TimeUnit.MILLISECONDS).atMost(1, TimeUnit.SECONDS).until(shift::isDone);
+        await().pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
+               .atMost(1, TimeUnit.SECONDS).until(shift::isDone);
         try {
             shift.get();
         } catch (ExecutionException e) {
