@@ -16,55 +16,48 @@
 package com.spikhalskiy.futurity;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class Futurity {
-    private final static ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
-    private static Wheel wheel = new Wheel(executorService, TimeUnit.MILLISECONDS.toNanos(1), TimeUnit.MILLISECONDS.toNanos(1), 512);
+    private static FuturityWheel commonFuturity;
 
-    static {
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-                wheel.shutdown(200, executorService::shutdown);
-            }
-        });
+    private Futurity() {
     }
 
     public static <V> CompletableFuture<V> shift(Future<V> future) {
-        CompletableFuture<V> result = trivialCast(future);
-        if (result != null) {
-            return result;
-        }
-        result = new CompletableFuture<>();
-        wheel.submit(future, result);
-        return result;
+        return commonFuturity.shift(future);
     }
 
     //TODO now polling with value less than basicPollDuration and timeTick has not too much sense
     public static <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit timeUnit) {
-        CompletableFuture<V> result = trivialCast(future);
-        if (result != null) {
-            return result;
-        }
-        result = new CompletableFuture<>();
-        wheel.submit(future, result, timeUnit.toNanos(pollDuration));
-        return result;
+        return commonFuturity.shiftWithPoll(future, pollDuration, timeUnit);
     }
 
-    @SuppressWarnings("unchecked")
-    private static <V> CompletableFuture<V> trivialCast(Future<V> future) {
-        if (future instanceof CompletionStage) {
-            if (future instanceof CompletableFuture) {
-                return (CompletableFuture<V>)future;
-            } else {
-                return ((CompletionStage<V>) future).toCompletableFuture();
+    public FuturityBuilder builder() {
+        return new FuturityBuilder();
+    }
+
+    static {
+        new FuturityBuilder().inject();
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            @Override
+            public void run() {
+                shutdownOnJVMExit();
             }
+        });
+    }
+
+    static void switchCommonFuturity(FuturityWheel newFuturity) {
+        FuturityWheel oldFuturity = commonFuturity;
+        commonFuturity = newFuturity;
+        if (oldFuturity != null) {
+            //TODO do this in proper way - active tasks should be transferred to new common futurity
+            oldFuturity.shutdown(TimeUnit.HOURS.toMillis(1));
         }
-        return null;
+    }
+
+    private static void shutdownOnJVMExit() {
+        commonFuturity.shutdown(200, FuturityBuilder.executorService::shutdown);
     }
 }

@@ -15,6 +15,10 @@
  */
 package com.spikhalskiy.futurity;
 
+import org.agrona.TimerWheel;
+import org.agrona.TimerWheel.Timer;
+import org.agrona.concurrent.ManyToOneConcurrentLinkedQueue;
+
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.concurrent.CompletableFuture;
@@ -24,13 +28,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import org.agrona.TimerWheel;
-import org.agrona.TimerWheel.Timer;
-import org.agrona.concurrent.ManyToOneConcurrentLinkedQueue;
-
 class Wheel {
     private final static long BASIC_POOLING = -1;
-    private final long basicPoolingDurationNs;
+    private final long basicPoolPeriodNs;
     private final ScheduledFuture<?> scheduledFuture;
     private final TimerWheel timerWheel;
     private final ManyToOneConcurrentLinkedQueue<Task> submissions = new ManyToOneConcurrentLinkedQueue<>();
@@ -42,11 +42,11 @@ class Wheel {
     private Runnable shutdownCallback;
 
     Wheel(ScheduledExecutorService scheduledExecutorService,
-          long basicPoolingDurationNs, long tickDurationNs, int ticksPerWheel) {
+          long basicPoolPeriodNs, long tickDurationNs, int ticksPerWheel) {
         this.timerWheel = new TimerWheel(tickDurationNs, TimeUnit.NANOSECONDS, ticksPerWheel);
-        this.basicPoolingDurationNs = basicPoolingDurationNs;
+        this.basicPoolPeriodNs = basicPoolPeriodNs;
         this.scheduledFuture = scheduledExecutorService
-                .scheduleAtFixedRate(new Work(), basicPoolingDurationNs, basicPoolingDurationNs, TimeUnit.NANOSECONDS);
+                .scheduleAtFixedRate(new Work(), basicPoolPeriodNs, basicPoolPeriodNs, TimeUnit.NANOSECONDS);
     }
 
     <T> void submit(Future<T> future, CompletableFuture<T> completableFuture, long poolingNs) {
@@ -72,7 +72,7 @@ class Wheel {
                 if (poolingNs == BASIC_POOLING) {
                     basicPooling.add(task);
                 } else {
-                    long scheduleIntervalNs = Math.max(poolingNs - basicPoolingDurationNs, 0);
+                    long scheduleIntervalNs = Math.max(poolingNs - basicPoolPeriodNs, 0);
                     Timer timer = timerWheel.newTimeout(scheduleIntervalNs, TimeUnit.NANOSECONDS, task::proceed);
                     task.setTimer(timer);
                 }
