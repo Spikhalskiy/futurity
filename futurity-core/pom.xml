@@ -5,11 +5,11 @@
     <parent>
         <groupId>com.spikhalskiy.futurity</groupId>
         <artifactId>futurity-parent</artifactId>
-        <version>0.2.0</version>
+        <version>0.2.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>futurity-core</artifactId>
-    <version>0.2.0</version>
+    <version>0.2.1-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>futurity/core</name>
 
