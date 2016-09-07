@@ -15,26 +15,18 @@
 package com.spikhalskiy.futurity;
 
 /**
- * Represents state of the Wheel timer
+ * Wrapper to store common {@link FuturityWheel} for basic use cases
  */
-enum WheelState {
-    /**
-     * Normally functioning wheel which proceed tasks by itself
-     */
-    ACTIVE,
+final class CommonFuturityWheel {
+    private static FuturityWheel commonFuturity;
 
-    /**
-     * Wheel in this status migrates tasks to another wheel before dying
-     */
-    MIGRATING,
+    private CommonFuturityWheel() {}
 
-    /**
-     * This wheel is shutting down because of JVM shutdown hook
-     */
-    SHUTDOWN_JVM,
+    public static void replace(FuturityWheel commonFuturity) {
+        CommonFuturityWheel.commonFuturity = commonFuturity;
+    }
 
-    /**
-     * This wheel is migrated is applicable, shut down and dead
-     */
-    DEAD
+    public static FuturityWheel get() {
+        return commonFuturity;
+    }
 }

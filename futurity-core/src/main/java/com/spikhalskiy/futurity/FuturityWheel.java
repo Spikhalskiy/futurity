@@ -33,26 +33,27 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 class FuturityWheel {
-    private final static long BASIC_POOLING = -1;
-    private final static int MAX_QUEUE_SIZE = 5000;
+    protected final static long BASIC_POOLING = -1;
+    protected final static int MAX_QUEUE_SIZE = 5000;
 
-    private final long basicPoolPeriodNs;
-    private final ScheduledFuture<?> scheduledFuture;
-    private final HashedWheelTimer timerWheel;
-    private final MpscChunkedArrayQueue<WorkTask>
+    protected final long basicPoolPeriodNs;
+    protected final ScheduledFuture<?> scheduledFuture;
+    protected final HashedWheelTimer timerWheel;
+    protected final MpscChunkedArrayQueue<WorkTask>
             taskSubmissions = new MpscChunkedArrayQueue<>(50, MAX_QUEUE_SIZE, true);
-    private final MpscChunkedArrayQueue<StateChange> stateChanges = new MpscChunkedArrayQueue<>(5, 10, true);
+    protected final MpscChunkedArrayQueue<StateChange> stateChanges = new MpscChunkedArrayQueue<>(5, 10, true);
 
-    private final LinkedList<WorkTask> basicPooling = new LinkedList<>();
+    protected final LinkedList<WorkTask> basicPooling = new LinkedList<>();
 
-    private WheelState state = WheelState.ACTIVE;
+    protected WheelState state = WheelState.ACTIVE;
+    //last timestamp when we can still do shutdown activities
+    protected long hardShutdownTimestamp;
 
-    //migration before shutdown
-    private FuturityWheel migrationWheel;
+    //migration
+    protected FuturityWheel migrationWheel;
 
     //jvm shutdown fields
-    private long hardShutdownTimestamp;
-    private Runnable shutdownCallback;
+    protected Runnable shutdownCallback;
 
     protected FuturityWheel(ScheduledExecutorService executorService,
                   long basicPoolPeriodNs, long tickDurationNs) {
@@ -90,14 +91,16 @@ class FuturityWheel {
 
     /**
      * Migrate tasks to another wheel and shutdown current wheel after that
+     * @param hardTimeoutMs maximum timeout that wheel has for migration of scheduled futures
      * @param newFuturityWheel target wheel for migration
      */
-    protected void migrateToAndShutdown(FuturityWheel newFuturityWheel) {
+    protected void migrateToAndShutdown(long hardTimeoutMs, FuturityWheel newFuturityWheel) {
         if (newFuturityWheel == null) {
             throw new NullPointerException("newFuturityWheel for migration couldn't be null");
         }
         stateChanges.offer(() -> {
             this.state = WheelState.MIGRATING;
+            hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
             migrationWheel = newFuturityWheel;
         });
     }
@@ -125,10 +128,10 @@ class FuturityWheel {
     }
 
     protected <T> void submit(WorkTask<T> workTask) {
-        if (migrationWheel == null) {
-            taskSubmissions.relaxedOffer(workTask);
-        } else {
+        if (migrationWheel != null) {
             migrationWheel.submit(workTask);
+        } else {
+            taskSubmissions.relaxedOffer(workTask);
         }
     }
 
@@ -185,7 +188,9 @@ class FuturityWheel {
             switch (state) {
                 case MIGRATING:
                     migrateScheduled();
-                    finalShutdown();
+                    if (System.currentTimeMillis() >= hardShutdownTimestamp) {
+                        finalShutdown();
+                    }
                     break;
                 case SHUTDOWN_JVM:
                     if (System.currentTimeMillis() >= hardShutdownTimestamp) {
@@ -218,7 +223,10 @@ class FuturityWheel {
         }
 
         private void migrateSubmissions() {
-            taskSubmissions.forEach(migrationWheel::submit);
+            WorkTask task;
+            while ((task = taskSubmissions.poll()) != null) {
+                migrationWheel.submit(task);
+            }
         }
 
         private void migrateScheduled() {

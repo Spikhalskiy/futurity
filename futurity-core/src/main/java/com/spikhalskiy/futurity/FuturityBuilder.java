@@ -25,6 +25,7 @@ public class FuturityBuilder {
 
     private long basicPoolPeriodNs = NO_VALUE;
     private long tickDurationNs = NO_VALUE;
+    private long shutdownDurationMs = NO_VALUE;
 
     protected FuturityBuilder() {}
 
@@ -33,8 +34,13 @@ public class FuturityBuilder {
         return this;
     }
 
-    public FuturityBuilder withTickDurationNs(long tickDuration, TimeUnit unit) {
+    public FuturityBuilder withTickDuration(long tickDuration, TimeUnit unit) {
         this.tickDurationNs = unit.toNanos(tickDuration);
+        return this;
+    }
+
+    public FuturityBuilder withShutdownDuration(long shutdownDuration, TimeUnit unit) {
+        this.shutdownDurationMs = unit.toNanos(shutdownDuration);
         return this;
     }
 
@@ -55,7 +61,28 @@ public class FuturityBuilder {
             }
         }
 
-        Futurity.switchCommonFuturity(futurity);
+        long shutdownDuration = this.shutdownDurationMs;
+        if (shutdownDuration == NO_VALUE) {
+            FuturityWheel currentFuturityWheel = CommonFuturityWheel.get();
+            if (currentFuturityWheel == null) {
+                shutdownDuration = 0;
+            } else {
+                shutdownDuration = 3 * Math.max(
+                        TimeUnit.NANOSECONDS.toMillis(currentFuturityWheel.basicPoolPeriodNs), 1);
+            }
+
+        }
+
+        switchCommonFuturity(futurity, shutdownDuration);
+    }
+
+    static void switchCommonFuturity(FuturityWheel newFuturity, long timeoutMs) {
+        FuturityWheel oldFuturity = CommonFuturityWheel.get();
+        CommonFuturityWheel.replace(newFuturity);
+        if (oldFuturity != null) {
+            oldFuturity.migrateToAndShutdown(
+                    timeoutMs, newFuturity);
+        }
     }
 
 }

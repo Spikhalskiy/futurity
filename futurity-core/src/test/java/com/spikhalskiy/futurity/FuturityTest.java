@@ -14,6 +14,7 @@
  */
 package com.spikhalskiy.futurity;
 
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -31,10 +32,17 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class FuturityTest {
+    @Before
+    public void setup() {
+        Futurity.builder().inject();
+    }
+
     @Test
     public void returnCompletableFutureBack() {
         CompletableFuture origin = new CompletableFuture();
@@ -92,9 +100,61 @@ public class FuturityTest {
 
             CountDownLatch countDownLatch = new CountDownLatch(500);
             futures.forEach(future -> future.thenAccept(i -> countDownLatch.countDown()));
-            await().atMost(5, TimeUnit.SECONDS).until(() -> countDownLatch.getCount() == 0);
+            await("Some futures are not finalized")
+                    .atMost(5, TimeUnit.SECONDS).until(() -> countDownLatch.getCount() == 0);
         } finally {
             executorService.shutdown();
         }
+    }
+
+    @Test
+    public void migration_completedFutureAfterDeath() {
+        AtomicReference<Boolean> futureResult = new AtomicReference<>();
+        Future<Boolean> origin = new FutureWithSource<>(futureResult);
+        CompletableFuture<Boolean> shift = Futurity.shift(origin);
+        assertFalse(shift.isDone());
+        FuturityWheel oldWheel = CommonFuturityWheel.get();
+
+        Futurity.builder().inject();
+        FuturityWheel newWheel = CommonFuturityWheel.get();
+
+        assertNotSame(oldWheel, newWheel);
+        assertFalse(shift.isDone());
+
+        await().pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
+               .atMost(1, TimeUnit.SECONDS).until(() -> oldWheel.state == WheelState.DEAD);
+
+        futureResult.set(Boolean.TRUE);
+        await("Future is not finalized by the new wheel")
+                .pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
+                .atMost(1, TimeUnit.SECONDS).until(shift::isDone);
+    }
+
+    @Test
+    public void migration_completedFutureBeforeDeath() {
+        Futurity.builder().withBasicPollPeriod(5, TimeUnit.SECONDS).withTickDuration(5, TimeUnit.SECONDS).inject();
+        FuturityWheel oldWheel = CommonFuturityWheel.get();
+
+        AtomicReference<Boolean> futureResult = new AtomicReference<>();
+        Future<Boolean> origin = new FutureWithSource<>(futureResult);
+        CompletableFuture<Boolean> shift = Futurity.shift(origin);
+        assertFalse(shift.isDone());
+
+        //wait until task would be submitted
+        await("Task didn't move from submitted state")
+                .pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
+                    .atMost(6, TimeUnit.SECONDS).until(() -> oldWheel.taskSubmissions.size() == 0);
+
+        Futurity.builder().withBasicPollPeriod(5, TimeUnit.SECONDS).withTickDuration(5, TimeUnit.SECONDS).inject();
+        FuturityWheel newWheel = CommonFuturityWheel.get();
+
+        assertNotSame(oldWheel, newWheel);
+        assertFalse(shift.isDone());
+        assertTrue(oldWheel.state == WheelState.ACTIVE);
+
+        futureResult.set(Boolean.TRUE);
+        await("Future is not finalized by the wheel in the migrating state")
+                .pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
+                .atMost(6, TimeUnit.SECONDS).until(shift::isDone);
     }
 }
