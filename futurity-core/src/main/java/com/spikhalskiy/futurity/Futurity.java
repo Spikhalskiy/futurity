@@ -51,7 +51,6 @@ public class Futurity {
         FuturityWheel oldFuturity = commonFuturity;
         commonFuturity = newFuturity;
         if (oldFuturity != null) {
-            //TODO do this in proper way - active tasks should be transferred to new common futurity
             oldFuturity.migrateToAndShutdown(newFuturity);
         }
     }

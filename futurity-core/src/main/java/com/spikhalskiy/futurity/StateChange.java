@@ -12,8 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * limitations under the License.
  */
+
 package com.spikhalskiy.futurity;
 
-enum WheelState {
-    ACTIVE, MIGRATING, SHUTDOWN_JVM, DEAD
-}
+interface StateChange extends Runnable {}
