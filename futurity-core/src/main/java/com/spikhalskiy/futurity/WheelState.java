@@ -29,12 +29,17 @@ enum WheelState {
     MIGRATING,
 
     /**
+     * This wheel is just shutting down without migration to another wheel
+     */
+    SHUTDOWN,
+
+    /**
      * This wheel is shutting down because of JVM shutdown hook
      */
     SHUTDOWN_JVM,
 
     /**
-     * This wheel is migrated is applicable, shut down and dead
+     * This wheel is migrated or shut down
      */
-    DEAD
+    TERMINATED
 }

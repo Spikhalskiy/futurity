@@ -40,7 +40,7 @@ public class FuturityBuilder {
     }
 
     public FuturityBuilder withShutdownDuration(long shutdownDuration, TimeUnit unit) {
-        this.shutdownDurationMs = unit.toNanos(shutdownDuration);
+        this.shutdownDurationMs = unit.toMillis(shutdownDuration);
         return this;
     }
 
@@ -67,8 +67,9 @@ public class FuturityBuilder {
             if (currentFuturityWheel == null) {
                 shutdownDuration = 0;
             } else {
-                shutdownDuration = 3 * Math.max(
-                        TimeUnit.NANOSECONDS.toMillis(currentFuturityWheel.basicPoolPeriodNs), 1);
+                shutdownDuration = Math.max(
+                        TimeUnit.NANOSECONDS.toMillis(3 * currentFuturityWheel.basicPoolPeriodNs),
+                        TimeUnit.SECONDS.toMillis(30));
             }
 
         }

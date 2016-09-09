@@ -115,14 +115,14 @@ public class FuturityTest {
         assertFalse(shift.isDone());
         FuturityWheel oldWheel = CommonFuturityWheel.get();
 
-        Futurity.builder().inject();
+        Futurity.builder().withShutdownDuration(1, TimeUnit.SECONDS).inject();
         FuturityWheel newWheel = CommonFuturityWheel.get();
 
         assertNotSame(oldWheel, newWheel);
         assertFalse(shift.isDone());
 
         await().pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
-               .atMost(1, TimeUnit.SECONDS).until(() -> oldWheel.state == WheelState.DEAD);
+               .atMost(2, TimeUnit.SECONDS).until(() -> oldWheel.state == WheelState.TERMINATED);
 
         futureResult.set(Boolean.TRUE);
         await("Future is not finalized by the new wheel")
@@ -145,7 +145,8 @@ public class FuturityTest {
                 .pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
                     .atMost(6, TimeUnit.SECONDS).until(() -> oldWheel.taskSubmissions.size() == 0);
 
-        Futurity.builder().withBasicPollPeriod(5, TimeUnit.SECONDS).withTickDuration(5, TimeUnit.SECONDS).inject();
+        Futurity.builder().withBasicPollPeriod(5, TimeUnit.SECONDS).withTickDuration(5, TimeUnit.SECONDS)
+                .withShutdownDuration(10, TimeUnit.SECONDS).inject();
         FuturityWheel newWheel = CommonFuturityWheel.get();
 
         assertNotSame(oldWheel, newWheel);

@@ -29,8 +29,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 class FuturityWheel {
     protected final static long BASIC_POOLING = -1;
@@ -90,8 +88,20 @@ class FuturityWheel {
     }
 
     /**
-     * Migrate tasks to another wheel and shutdown current wheel after that
-     * @param hardTimeoutMs maximum timeout that wheel has for migration of scheduled futures
+     * Terminate the current wheel after passing {code hardTimeoutMs} time
+     * @param hardTimeoutMs maximum timeout that wheel has for checking state of scheduled and new submitted futures
+     */
+    protected void shutdown(long hardTimeoutMs) {
+        stateChanges.offer(() -> {
+            hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
+            state = WheelState.SHUTDOWN;
+        });
+    }
+
+    /**
+     * Migrate tasks to the another wheel {@code newFuturityWheel} and terminate the current wheel after that
+     * and after passing {code hardTimeoutMs} time.
+     * @param hardTimeoutMs maximum timeout that wheel has to complete migration of scheduled and new submitted futures
      * @param newFuturityWheel target wheel for migration
      */
     protected void migrateToAndShutdown(long hardTimeoutMs, FuturityWheel newFuturityWheel) {
@@ -99,9 +109,9 @@ class FuturityWheel {
             throw new NullPointerException("newFuturityWheel for migration couldn't be null");
         }
         stateChanges.offer(() -> {
-            this.state = WheelState.MIGRATING;
             hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
             migrationWheel = newFuturityWheel;
+            state = WheelState.MIGRATING;
         });
     }
 
@@ -112,9 +122,9 @@ class FuturityWheel {
      */
     protected void shutdownJVM(long hardTimeoutMs, Runnable callback) {
         stateChanges.offer(() -> {
-            state = WheelState.SHUTDOWN_JVM;
             hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
             shutdownCallback = callback;
+            state = WheelState.SHUTDOWN_JVM;
         });
     }
 
@@ -192,9 +202,15 @@ class FuturityWheel {
                         finalShutdown();
                     }
                     break;
+                case SHUTDOWN:
+                    if (System.currentTimeMillis() >= hardShutdownTimestamp) {
+                        killScheduledAndSubmissions("Futurity that track this task has been shut down");
+                        finalShutdown();
+                    }
+                    break;
                 case SHUTDOWN_JVM:
                     if (System.currentTimeMillis() >= hardShutdownTimestamp) {
-                        killScheduledAndSubmissions();
+                        killScheduledAndSubmissions("Futurity that track this task has been shut down as a result of JVM shutdown");
                         finalShutdown();
                     }
                     break;
@@ -208,18 +224,23 @@ class FuturityWheel {
                 shutdownCallback.run();
             }
 
-            state = WheelState.DEAD;
+            state = WheelState.TERMINATED;
         }
 
-        private void killScheduledAndSubmissions() {
-            Stream.concat(
-                    taskSubmissions.stream(),
-                    Stream.concat(basicPooling.stream(),
-                                  StreamSupport.stream(timerWheel.scheduled().spliterator(), false)
-                                               .map(task -> (WorkTask)task.getTask()))
-            ).map(WorkTask::getCompletableFuture)
-                  .forEach(completableFuture -> completableFuture.completeExceptionally(
-                          new RuntimeException("Futurity that track this task has been shut down")));
+        private void killScheduledAndSubmissions(String exceptionMessage) {
+            WorkTask task;
+            while ((task = taskSubmissions.poll()) != null) {
+                migrationWheel.submit(task);
+            }
+            basicPooling.stream().map(WorkTask::getCompletableFuture).forEach(
+                    completableFuture -> completableFuture.completeExceptionally(
+                        new IllegalStateException(exceptionMessage)));
+            basicPooling.clear();
+            for (Timer timer : timerWheel.scheduled()) {
+                ((WorkTask)timer.getTask()).getCompletableFuture().completeExceptionally(
+                        new IllegalStateException(exceptionMessage));
+                timer.cancel();
+            }
         }
 
         private void migrateSubmissions() {
@@ -230,10 +251,12 @@ class FuturityWheel {
         }
 
         private void migrateScheduled() {
-            Stream.concat(basicPooling.stream(),
-                          StreamSupport.stream(timerWheel.scheduled().spliterator(), false)
-                                       .map(task -> (WorkTask)task.getTask())
-            ).forEach(migrationWheel::submit);
+            basicPooling.forEach(migrationWheel::submit);
+            basicPooling.clear();
+            for (Timer timer : timerWheel.scheduled()) {
+                migrationWheel.submit((WorkTask)timer.getTask());
+                timer.cancel();
+            }
         }
     }
 
@@ -273,7 +296,11 @@ class FuturityWheel {
          * @return true if done and should be removed from triggering
          */
         boolean proceed(Timer timer) {
-            //if future is done we should consider sink timers to some sort of stack for reusing
+            //TODO if future is done we should consider sink timers to some sort of stack for reusing
+            if (completableFuture.isDone()) {
+                return true;
+            }
+
             if (future.isDone()) {
                 try {
                     completableFuture.complete(future.get());
