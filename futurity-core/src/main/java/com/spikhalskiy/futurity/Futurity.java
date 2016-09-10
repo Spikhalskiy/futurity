@@ -36,15 +36,5 @@ public final class Futurity {
 
     static {
         builder().inject();
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-                shutdownOnJVMExit();
-            }
-        });
-    }
-
-    private static void shutdownOnJVMExit() {
-        CommonFuturityWheel.get().shutdownJVM(200, FuturityBuilder.executorService::shutdown);
     }
 }

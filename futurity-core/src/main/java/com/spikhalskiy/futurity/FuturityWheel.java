@@ -42,6 +42,7 @@ class FuturityWheel {
     protected final MpscChunkedArrayQueue<StateChange> stateChanges = new MpscChunkedArrayQueue<>(5, 10, true);
 
     protected final LinkedList<WorkTask> basicPooling = new LinkedList<>();
+    protected final Thread jvmShutdownHook;
 
     protected WheelState state = WheelState.ACTIVE;
     //last timestamp when we can still do shutdown activities
@@ -64,6 +65,14 @@ class FuturityWheel {
         this.basicPoolPeriodNs = basicPoolPeriodNs;
         this.scheduledFuture = scheduledExecutorService
                 .scheduleAtFixedRate(new Work(), basicPoolPeriodNs, basicPoolPeriodNs, TimeUnit.NANOSECONDS);
+
+        this.jvmShutdownHook = new Thread() {
+            @Override
+            public void run() {
+                shutdownOnJVMExit();
+            }
+        };
+        Runtime.getRuntime().addShutdownHook(this.jvmShutdownHook);
     }
 
     protected <V> CompletableFuture<V> shift(Future<V> future) {
@@ -89,11 +98,12 @@ class FuturityWheel {
 
     /**
      * Terminate the current wheel after passing {code hardTimeoutMs} time
-     * @param hardTimeoutMs maximum timeout that wheel has for checking state of scheduled and new submitted futures
+     * @param hardTimeout maximum timeout that wheel has for checking state of scheduled and new submitted futures
+     * @param timeUnit time unit of the {@code hardTimeout} parameter
      */
-    protected void shutdown(long hardTimeoutMs) {
+    protected void shutdown(long hardTimeout, TimeUnit timeUnit) {
         stateChanges.offer(() -> {
-            hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
+            hardShutdownTimestamp = System.currentTimeMillis() + timeUnit.toMillis(hardTimeout);
             state = WheelState.SHUTDOWN;
         });
     }
@@ -101,30 +111,18 @@ class FuturityWheel {
     /**
      * Migrate tasks to the another wheel {@code newFuturityWheel} and terminate the current wheel after that
      * and after passing {code hardTimeoutMs} time.
-     * @param hardTimeoutMs maximum timeout that wheel has to complete migration of scheduled and new submitted futures
+     * @param hardTimeout maximum timeout that wheel has to complete migration of scheduled and new submitted futures
+     * @param timeUnit time unit of the {@code hardTimeout} parameter
      * @param newFuturityWheel target wheel for migration
      */
-    protected void migrateToAndShutdown(long hardTimeoutMs, FuturityWheel newFuturityWheel) {
+    protected void migrateToAndShutdown(long hardTimeout, TimeUnit timeUnit, FuturityWheel newFuturityWheel) {
         if (newFuturityWheel == null) {
             throw new NullPointerException("newFuturityWheel for migration couldn't be null");
         }
         stateChanges.offer(() -> {
-            hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
+            hardShutdownTimestamp = System.currentTimeMillis() + timeUnit.toMillis(hardTimeout);
             migrationWheel = newFuturityWheel;
             state = WheelState.MIGRATING;
-        });
-    }
-
-    /**
-     * Endpoint to call to make hard shutdown on JVM exiting
-     * @param hardTimeoutMs maximum timeout that wheel has for processing of currently scheduled futures
-     * @param callback would be called after full shutdown of this {@link FuturityWheel}
-     */
-    protected void shutdownJVM(long hardTimeoutMs, Runnable callback) {
-        stateChanges.offer(() -> {
-            hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
-            shutdownCallback = callback;
-            state = WheelState.SHUTDOWN_JVM;
         });
     }
 
@@ -143,6 +141,23 @@ class FuturityWheel {
         } else {
             taskSubmissions.relaxedOffer(workTask);
         }
+    }
+
+    private void shutdownOnJVMExit() {
+        shutdownOnJVMExit(200, FuturityBuilder.executorService::shutdown);
+    }
+
+    /**
+     * Endpoint to call to make hard shutdown on JVM exiting
+     * @param hardTimeoutMs maximum timeout that wheel has for processing of currently scheduled futures
+     * @param callback would be called after full shutdown of this {@link FuturityWheel}
+     */
+    private void shutdownOnJVMExit(long hardTimeoutMs, Runnable callback) {
+        stateChanges.offer(() -> {
+            hardShutdownTimestamp = System.currentTimeMillis() + hardTimeoutMs;
+            shutdownCallback = callback;
+            state = WheelState.SHUTDOWN_JVM;
+        });
     }
 
     private class Work implements Runnable {
@@ -224,6 +239,7 @@ class FuturityWheel {
                 shutdownCallback.run();
             }
 
+            Runtime.getRuntime().removeShutdownHook(jvmShutdownHook);
             state = WheelState.TERMINATED;
         }
 

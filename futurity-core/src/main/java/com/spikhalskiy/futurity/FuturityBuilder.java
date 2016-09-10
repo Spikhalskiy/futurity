@@ -81,8 +81,7 @@ public class FuturityBuilder {
         FuturityWheel oldFuturity = CommonFuturityWheel.get();
         CommonFuturityWheel.replace(newFuturity);
         if (oldFuturity != null) {
-            oldFuturity.migrateToAndShutdown(
-                    timeoutMs, newFuturity);
+            oldFuturity.migrateToAndShutdown(timeoutMs, TimeUnit.MILLISECONDS, newFuturity);
         }
     }
 
