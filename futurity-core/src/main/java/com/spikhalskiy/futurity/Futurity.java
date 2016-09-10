@@ -26,8 +26,8 @@ public final class Futurity {
     }
 
     //TODO now polling with value less than basicPollDuration and timeTick has not too much sense
-    public static <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit timeUnit) {
-        return CommonFuturityWheel.get().shiftWithPoll(future, pollDuration, timeUnit);
+    public static <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit unit) {
+        return CommonFuturityWheel.get().shiftWithPoll(future, pollDuration, unit);
     }
 
     public static FuturityBuilder builder() {

@@ -15,10 +15,12 @@
 package com.spikhalskiy.futurity;
 
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class FuturityBuilder {
+    //TODO we need some way to shutdown this pool
     final static ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
 
     private final static long NO_VALUE = -1;
@@ -29,37 +31,79 @@ public class FuturityBuilder {
 
     protected FuturityBuilder() {}
 
+    /**
+     * Setup basic pool period which would be used to check futures in configured {@link FuturityWheel} instance
+     * @param pollPeriod default delay between checks of {@link java.util.concurrent.Future} states
+     * @param unit time unit if the {@code poolPeriod}
+     * @return {@code this}
+     */
     public FuturityBuilder withBasicPollPeriod(long pollPeriod, TimeUnit unit) {
         this.basicPoolPeriodNs = unit.toNanos(pollPeriod);
         return this;
     }
 
+    /**
+     * Setup precision of the underlying {@link com.spikhalskiy.hashedwheeltimer.HashedWheelTimer} which is used when
+     * you specify pooling timeout in the
+     * {@link com.spikhalskiy.futurity.Futurity#shiftWithPoll(Future, long, TimeUnit)} or
+     * {@link com.spikhalskiy.futurity.FuturityWheel#shiftWithPoll(Future, long, TimeUnit)}.
+     * Doesn't make too much sense to setup it much less than basic pool period in
+     * {@link #withBasicPollPeriod(long, TimeUnit)} because this
+     * {@link com.spikhalskiy.hashedwheeltimer.HashedWheelTimer} would be checked once in the basic pool period.
+     * But it sometimes make sense to setup to 1/2 or 1/4 of the basic pool period to select timeslots more precisely.
+     *
+     * @param pollPeriod default delay between checks of {@link java.util.concurrent.Future} states
+     * @param unit time unit if the {@code poolPeriod}
+     * @return {@code this}
+     */
     public FuturityBuilder withTickDuration(long tickDuration, TimeUnit unit) {
         this.tickDurationNs = unit.toNanos(tickDuration);
         return this;
     }
 
+    /**
+     * This parameter makes sense only if building ends with {@link #inject()}
+     * @param shutdownDuration duration that old common wheel has for migration to the new wheel before
+     * the full termination
+     * @param unit time unit of the {@code shutdownDuration}
+     * @return {@code this}
+     */
     public FuturityBuilder withShutdownDuration(long shutdownDuration, TimeUnit unit) {
         this.shutdownDurationMs = unit.toMillis(shutdownDuration);
         return this;
     }
 
-    public void inject() {
-        FuturityWheel futurity;
+    /**
+     * Create a new separate instance of {@link FuturityWheel} without touching the current common wheel, which
+     * is used in {@link Futurity#shift(Future)} and {@link Futurity#shiftWithPoll(Future, long, TimeUnit)}
+     * static methods.
+     *
+     * @return new empty FuturityWheel instance with internal parameters configured by this builder
+     */
+    public FuturityWheel separate() {
         if (basicPoolPeriodNs != NO_VALUE) {
             if (tickDurationNs != NO_VALUE) {
-                futurity = new FuturityWheel(executorService, basicPoolPeriodNs, tickDurationNs);
+                return new FuturityWheel(executorService, basicPoolPeriodNs, tickDurationNs);
             } else {
-                futurity = new FuturityWheel(executorService, Math.max(basicPoolPeriodNs/2, 1), tickDurationNs);
+                return new FuturityWheel(executorService, Math.max(basicPoolPeriodNs/2, 1), tickDurationNs);
             }
         } else {
             if (tickDurationNs != NO_VALUE) {
-                futurity = new FuturityWheel(executorService, TimeUnit.MILLISECONDS.toNanos(1), tickDurationNs);
+                return new FuturityWheel(executorService, TimeUnit.MILLISECONDS.toNanos(1), tickDurationNs);
             } else {
-                futurity = new FuturityWheel(executorService,
-                                             TimeUnit.MILLISECONDS.toNanos(1), TimeUnit.MILLISECONDS.toNanos(1));
+                return new FuturityWheel(executorService,
+                                         TimeUnit.MILLISECONDS.toNanos(1), TimeUnit.MILLISECONDS.toNanos(1));
             }
         }
+    }
+
+    /**
+     * Replace the current common wheel used in {@link Futurity#shift(Future)} and
+     * {@link Futurity#shiftWithPoll(Future, long, TimeUnit)} static methods. Old wheel would
+     * get a chance to migrate all futures inside to the new created wheel.
+     */
+    public void inject() {
+        FuturityWheel futurity = separate();
 
         long shutdownDuration = this.shutdownDurationMs;
         if (shutdownDuration == NO_VALUE) {
@@ -71,13 +115,12 @@ public class FuturityBuilder {
                         TimeUnit.NANOSECONDS.toMillis(3 * currentFuturityWheel.basicPoolPeriodNs),
                         TimeUnit.SECONDS.toMillis(30));
             }
-
         }
 
         switchCommonFuturity(futurity, shutdownDuration);
     }
 
-    static void switchCommonFuturity(FuturityWheel newFuturity, long timeoutMs) {
+    private static void switchCommonFuturity(FuturityWheel newFuturity, long timeoutMs) {
         FuturityWheel oldFuturity = CommonFuturityWheel.get();
         CommonFuturityWheel.replace(newFuturity);
         if (oldFuturity != null) {
