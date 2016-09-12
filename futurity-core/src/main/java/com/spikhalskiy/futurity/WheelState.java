@@ -16,6 +16,7 @@ package com.spikhalskiy.futurity;
 
 /**
  * Represents state of the Wheel timer
+ * ACTIVE -> {MIGRATING, SHUTDOWN, SHUTDOWN_JVM} -> TERMINATED
  */
 enum WheelState {
     /**

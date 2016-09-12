@@ -30,7 +30,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-class FuturityWheel {
+public class FuturityWheel {
     protected final static long BASIC_POOLING = -1;
     protected final static int MAX_QUEUE_SIZE = 5000;
 
@@ -72,7 +72,15 @@ class FuturityWheel {
         Runtime.getRuntime().addShutdownHook(this.jvmShutdownHook);
     }
 
-    protected <V> CompletableFuture<V> shift(Future<V> future) {
+    /**
+     * Wrap a {@code future} with a {@link CompletableFuture} using {@code this} wheel for scheduling checks.
+     *
+     * @param future {@link java.util.concurrent.Future} to wrap. This method doesn't change this future.
+     * After wrapping you can continue to use it.
+     * @param <V> {@code future} result type
+     * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
+     */
+    public <V> CompletableFuture<V> shift(Future<V> future) {
         CompletableFuture<V> result = trivialCast(future);
         if (result != null) {
             return result;
@@ -82,8 +90,16 @@ class FuturityWheel {
         return result;
     }
 
-    //TODO now polling with value less than basicPollDuration and timeTick has not too much sense
-    protected <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit unit) {
+    /**
+     * Wrap a {@code future} with a {@link CompletableFuture} using {@code this} wheel for scheduling checks with
+     * specified {@code pollDuration} poll interval.
+     *
+     * @param future {@link java.util.concurrent.Future} to wrap. This method doesn't change this future.
+     * After wrapping you can continue to use it.
+     * @param <V> {@code future} result type
+     * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
+     */
+    public <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit unit) {
         CompletableFuture<V> result = trivialCast(future);
         if (result != null) {
             return result;
@@ -98,7 +114,7 @@ class FuturityWheel {
      * @param hardTimeout maximum timeout that wheel has for checking state of scheduled and new submitted futures
      * @param unit time unit of the {@code hardTimeout} parameter
      */
-    protected void shutdown(long hardTimeout, TimeUnit unit) {
+    public void shutdown(long hardTimeout, TimeUnit unit) {
         stateChanges.offer(() -> {
             hardShutdownTimestamp = System.currentTimeMillis() + unit.toMillis(hardTimeout);
             state = WheelState.SHUTDOWN;
@@ -112,7 +128,7 @@ class FuturityWheel {
      * @param unit time unit of the {@code hardTimeout} parameter
      * @param newFuturityWheel target wheel for migration
      */
-    protected void migrateToAndShutdown(long hardTimeout, TimeUnit unit, FuturityWheel newFuturityWheel) {
+    public void migrateToAndShutdown(long hardTimeout, TimeUnit unit, FuturityWheel newFuturityWheel) {
         if (newFuturityWheel == null) {
             throw new NullPointerException("newFuturityWheel for migration couldn't be null");
         }

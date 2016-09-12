@@ -19,6 +19,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Default settings are
+ * basicPoolPeriod = 1 ms
+ * tickDuration = basicPoolPeriod / 2
+ * shutdownDuration = 3 * basicPoolPeriod, but not less than 30 seconds
+ */
 public class FuturityBuilder {
     //TODO we need some way to shutdown this pool
     final static ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
@@ -49,10 +55,11 @@ public class FuturityBuilder {
      * {@link com.spikhalskiy.futurity.FuturityWheel#shiftWithPoll(Future, long, TimeUnit)}.
      * Doesn't make too much sense to setup it much less than basic pool period in
      * {@link #withBasicPollPeriod(long, TimeUnit)} because this
-     * {@link com.spikhalskiy.hashedwheeltimer.HashedWheelTimer} would be checked once in the basic pool period.
-     * But it sometimes make sense to setup to 1/2 or 1/4 of the basic pool period to select timeslots more precisely.
+     * {@link com.spikhalskiy.hashedwheeltimer.HashedWheelTimer} would be checked once per the basic pool period.
+     * But it sometimes make sense to setup to 1/2 or 1/4 of the basic pool period to select time slots more precisely.
      *
-     * @param pollPeriod default delay between checks of {@link java.util.concurrent.Future} states
+     * @param tickDuration distance between time slots using for scheduling tasks with custom poll intervals. Lesser
+     * the value - more precise time scheduling would be, but less efficient.
      * @param unit time unit if the {@code poolPeriod}
      * @return {@code this}
      */
@@ -85,14 +92,14 @@ public class FuturityBuilder {
             if (tickDurationNs != NO_VALUE) {
                 return new FuturityWheel(executorService, basicPoolPeriodNs, tickDurationNs);
             } else {
-                return new FuturityWheel(executorService, Math.max(basicPoolPeriodNs/2, 1), tickDurationNs);
+                return new FuturityWheel(executorService, basicPoolPeriodNs, Math.max(basicPoolPeriodNs/2, 1));
             }
         } else {
             if (tickDurationNs != NO_VALUE) {
                 return new FuturityWheel(executorService, TimeUnit.MILLISECONDS.toNanos(1), tickDurationNs);
             } else {
                 return new FuturityWheel(executorService,
-                                         TimeUnit.MILLISECONDS.toNanos(1), TimeUnit.MILLISECONDS.toNanos(1));
+                                         TimeUnit.MILLISECONDS.toNanos(1), TimeUnit.MILLISECONDS.toNanos(1)/2);
             }
         }
     }

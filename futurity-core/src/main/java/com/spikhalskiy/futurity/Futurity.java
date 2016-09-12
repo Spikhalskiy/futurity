@@ -21,15 +21,59 @@ import java.util.concurrent.TimeUnit;
 public final class Futurity {
     private Futurity() {}
 
+    /**
+     * Wrap a {@code future} with a {@link CompletableFuture} using common settings.<br/>
+     * Common {@link FuturityWheel} would be used for scheduling the {@code future} checks.<br/>
+     * To change settings of a common {@link FuturityWheel} which is used for wrapping
+     * in this method and {@link #shiftWithPoll(Future, long, TimeUnit)} use<br/>
+     * <code>Futurity.builder.<br/>
+     * ... // configuration<br/>
+     * .inject();
+     * </code><br/>
+     * Default settings are<br/>
+     * basicPoolPeriod = 1 ms<br/>
+     * tickDuration = 500 microseconds<br/>
+     *
+     * @param future {@link java.util.concurrent.Future} to wrap. This method doesn't change this future.
+     * After wrapping you can continue to use it.
+     * @param <V> {@code future} result type
+     * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
+     */
     public static <V> CompletableFuture<V> shift(Future<V> future) {
         return CommonFuturityWheel.get().shift(future);
     }
 
-    //TODO now polling with value less than basicPollDuration and timeTick has not too much sense
+    /**
+     * Wrap a {@code future} with a {@link CompletableFuture} using specified {@code pollDuration} poll interval
+     * for checks execution.<br/>
+     * Common {@link FuturityWheel} would be used for scheduling the {@code future} checks.<br/>
+     * If you need to check your future rare enough - it's better to use this optimized method, which makes possible
+     * to don't execute a {@link Future} check each basicPoolPeriod of the common {@link FuturityWheel}.
+     *
+     * To change settings of the common {@link FuturityWheel} which is used for wrapping
+     * in this method and {@link #shift(Future)} use<br/>
+     * <code>Futurity.builder.<br/>
+     * ... // configuration<br/>
+     * .inject();
+     * </code><br/>
+     * Default settings are<br/>
+     * basicPoolPeriod = 1 ms<br/>
+     * tickDuration = 500 microseconds<br/>
+     *
+     * @param future {@link java.util.concurrent.Future} to wrap. This method doesn't change this future.
+     * After wrapping you can continue to use it.
+     * @param <V> {@code future} result type
+     * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
+     */
     public static <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit unit) {
         return CommonFuturityWheel.get().shiftWithPoll(future, pollDuration, unit);
     }
 
+    /**
+     * Create builder that makes it possible to configure a new {@link FuturityWheel} as a separate instance or
+     * inject new configuration in a common wheel used for {@link Futurity} static methods.
+     * @return {@link FuturityBuilder} instance for configuration
+     */
     public static FuturityBuilder builder() {
         return new FuturityBuilder();
     }
