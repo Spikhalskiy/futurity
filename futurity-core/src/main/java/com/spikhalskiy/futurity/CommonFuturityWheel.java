@@ -14,19 +14,67 @@
  */
 package com.spikhalskiy.futurity;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
- * Wrapper to store common {@link FuturityWheel} for basic use cases
+ * Wrapper to store common {@link FuturityWheel} for basic use cases and additional common entities and registries.
  */
 final class CommonFuturityWheel {
+    private final static ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+
+    private final static AtomicInteger activeFutures = new AtomicInteger();
+
     private static FuturityWheel commonFuturity;
 
     private CommonFuturityWheel() {}
 
-    public static void replace(FuturityWheel commonFuturity) {
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            @Override
+            public void run() {
+                synchronized (activeFutures) {
+                    long startTimestamp = System.currentTimeMillis();
+                    while (activeFutures.get() > 0 &&
+                           System.currentTimeMillis() <
+                           startTimestamp + FuturityWheel.JVM_EXIT_SHUTDOWN_TIMEOUT_MS * 2) {
+                        try {
+                            activeFutures.wait(FuturityWheel.JVM_EXIT_SHUTDOWN_TIMEOUT_MS / 4);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                    executorService.shutdown();
+                }
+            }
+        });
+    }
+
+    static void replaceCommon(FuturityWheel commonFuturity) {
         CommonFuturityWheel.commonFuturity = commonFuturity;
     }
 
-    public static FuturityWheel get() {
+    static FuturityWheel getCommon() {
         return commonFuturity;
+    }
+
+    static ScheduledExecutorService executorService() {
+        return executorService;
+    }
+
+    public static void incrementWheelsCount() {
+        synchronized (activeFutures) {
+            activeFutures.incrementAndGet();
+            activeFutures.notify();
+        }
+    }
+
+    public static void decrementWheelsCount() {
+        synchronized (activeFutures) {
+            activeFutures.incrementAndGet();
+            activeFutures.notify();
+        }
     }
 }

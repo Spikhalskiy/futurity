@@ -40,7 +40,7 @@ public final class Futurity {
      * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
      */
     public static <V> CompletableFuture<V> shift(Future<V> future) {
-        return CommonFuturityWheel.get().shift(future);
+        return CommonFuturityWheel.getCommon().shift(future);
     }
 
     /**
@@ -66,7 +66,7 @@ public final class Futurity {
      * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
      */
     public static <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit unit) {
-        return CommonFuturityWheel.get().shiftWithPoll(future, pollDuration, unit);
+        return CommonFuturityWheel.getCommon().shiftWithPoll(future, pollDuration, unit);
     }
 
     /**

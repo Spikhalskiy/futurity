@@ -113,10 +113,10 @@ public class FuturityTest {
         Future<Boolean> origin = new FutureWithSource<>(futureResult);
         CompletableFuture<Boolean> shift = Futurity.shift(origin);
         assertFalse(shift.isDone());
-        FuturityWheel oldWheel = CommonFuturityWheel.get();
+        FuturityWheel oldWheel = CommonFuturityWheel.getCommon();
 
         Futurity.builder().withShutdownDuration(1, TimeUnit.SECONDS).inject();
-        FuturityWheel newWheel = CommonFuturityWheel.get();
+        FuturityWheel newWheel = CommonFuturityWheel.getCommon();
 
         assertNotSame(oldWheel, newWheel);
         assertFalse(shift.isDone());
@@ -133,7 +133,7 @@ public class FuturityTest {
     @Test
     public void migration_completedFutureBeforeDeath() {
         Futurity.builder().withBasicPollPeriod(5, TimeUnit.SECONDS).withTickDuration(5, TimeUnit.SECONDS).inject();
-        FuturityWheel oldWheel = CommonFuturityWheel.get();
+        FuturityWheel oldWheel = CommonFuturityWheel.getCommon();
 
         AtomicReference<Boolean> futureResult = new AtomicReference<>();
         Future<Boolean> origin = new FutureWithSource<>(futureResult);
@@ -147,7 +147,7 @@ public class FuturityTest {
 
         Futurity.builder().withBasicPollPeriod(5, TimeUnit.SECONDS).withTickDuration(5, TimeUnit.SECONDS)
                 .withShutdownDuration(10, TimeUnit.SECONDS).inject();
-        FuturityWheel newWheel = CommonFuturityWheel.get();
+        FuturityWheel newWheel = CommonFuturityWheel.getCommon();
 
         assertNotSame(oldWheel, newWheel);
         assertFalse(shift.isDone());

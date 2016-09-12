@@ -14,9 +14,7 @@
  */
 package com.spikhalskiy.futurity;
 
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -27,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class FuturityBuilder {
     //TODO we need some way to shutdown this pool
-    final static ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+
 
     private final static long NO_VALUE = -1;
 
@@ -90,15 +88,18 @@ public class FuturityBuilder {
     public FuturityWheel separate() {
         if (basicPoolPeriodNs != NO_VALUE) {
             if (tickDurationNs != NO_VALUE) {
-                return new FuturityWheel(executorService, basicPoolPeriodNs, tickDurationNs);
+                return new FuturityWheel(CommonFuturityWheel.executorService(),
+                                         basicPoolPeriodNs, tickDurationNs);
             } else {
-                return new FuturityWheel(executorService, basicPoolPeriodNs, Math.max(basicPoolPeriodNs/2, 1));
+                return new FuturityWheel(CommonFuturityWheel.executorService(), basicPoolPeriodNs,
+                                         Math.max(basicPoolPeriodNs/2, 1));
             }
         } else {
             if (tickDurationNs != NO_VALUE) {
-                return new FuturityWheel(executorService, TimeUnit.MILLISECONDS.toNanos(1), tickDurationNs);
+                return new FuturityWheel(CommonFuturityWheel.executorService(),
+                                         TimeUnit.MILLISECONDS.toNanos(1), tickDurationNs);
             } else {
-                return new FuturityWheel(executorService,
+                return new FuturityWheel(CommonFuturityWheel.executorService(),
                                          TimeUnit.MILLISECONDS.toNanos(1), TimeUnit.MILLISECONDS.toNanos(1)/2);
             }
         }
@@ -114,7 +115,7 @@ public class FuturityBuilder {
 
         long shutdownDuration = this.shutdownDurationMs;
         if (shutdownDuration == NO_VALUE) {
-            FuturityWheel currentFuturityWheel = CommonFuturityWheel.get();
+            FuturityWheel currentFuturityWheel = CommonFuturityWheel.getCommon();
             if (currentFuturityWheel == null) {
                 shutdownDuration = 0;
             } else {
@@ -128,8 +129,8 @@ public class FuturityBuilder {
     }
 
     private static void switchCommonFuturity(FuturityWheel newFuturity, long timeoutMs) {
-        FuturityWheel oldFuturity = CommonFuturityWheel.get();
-        CommonFuturityWheel.replace(newFuturity);
+        FuturityWheel oldFuturity = CommonFuturityWheel.getCommon();
+        CommonFuturityWheel.replaceCommon(newFuturity);
         if (oldFuturity != null) {
             oldFuturity.migrateToAndShutdown(timeoutMs, TimeUnit.MILLISECONDS, newFuturity);
         }

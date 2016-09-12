@@ -31,6 +31,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class FuturityWheel {
+    final static long JVM_EXIT_SHUTDOWN_TIMEOUT_MS = 200;
+
     protected final static long BASIC_POOLING = -1;
     protected final static int MAX_QUEUE_SIZE = 5000;
 
@@ -70,6 +72,7 @@ public class FuturityWheel {
             }
         };
         Runtime.getRuntime().addShutdownHook(this.jvmShutdownHook);
+        CommonFuturityWheel.incrementWheelsCount();
     }
 
     /**
@@ -157,7 +160,7 @@ public class FuturityWheel {
     }
 
     private void shutdownOnJVMExit() {
-        shutdownOnJVMExit(200);
+        shutdownOnJVMExit(JVM_EXIT_SHUTDOWN_TIMEOUT_MS);
     }
 
     /**
@@ -248,6 +251,7 @@ public class FuturityWheel {
 
             Runtime.getRuntime().removeShutdownHook(jvmShutdownHook);
             state = WheelState.TERMINATED;
+            CommonFuturityWheel.decrementWheelsCount();
         }
 
         private void killScheduledAndSubmissions(String exceptionMessage) {
