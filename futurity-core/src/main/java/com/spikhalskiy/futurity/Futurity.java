@@ -22,17 +22,17 @@ public final class Futurity {
     private Futurity() {}
 
     /**
-     * Wrap a {@code future} with a {@link CompletableFuture} using common settings.<br/>
-     * Common {@link FuturityWheel} would be used for scheduling the {@code future} checks.<br/>
+     * Wrap a {@code future} with a {@link CompletableFuture} using common settings.<br>
+     * Common {@link FuturityWheel} would be used for scheduling the {@code future} checks.<br>
      * To change settings of a common {@link FuturityWheel} which is used for wrapping
-     * in this method and {@link #shiftWithPoll(Future, long, TimeUnit)} use<br/>
-     * <code>Futurity.builder.<br/>
-     * ... // configuration<br/>
+     * in this method and {@link #shiftWithPoll(Future, long, TimeUnit)} use<br>
+     * <code>Futurity.builder.<br>
+     * ... // configuration<br>
      * .inject();
-     * </code><br/>
-     * Default settings are<br/>
-     * basicPoolPeriod = 1 ms<br/>
-     * tickDuration = 500 microseconds<br/>
+     * </code><br>
+     * Default settings are<br>
+     * basicPoolPeriod = 1 ms<br>
+     * tickDuration = 500 microseconds
      *
      * @param future {@link java.util.concurrent.Future} to wrap. This method doesn't change this future.
      * After wrapping you can continue to use it.
@@ -45,28 +45,31 @@ public final class Futurity {
 
     /**
      * Wrap a {@code future} with a {@link CompletableFuture} using specified {@code pollDuration} poll interval
-     * for checks execution.<br/>
-     * Common {@link FuturityWheel} would be used for scheduling the {@code future} checks.<br/>
+     * for checks execution.<br>
+     * Common {@link FuturityWheel} would be used for scheduling the {@code future} checks.<br>
      * If you need to check your future rare enough - it's better to use this optimized method, which makes possible
      * to don't execute a {@link Future} check each basicPoolPeriod of the common {@link FuturityWheel}.
      *
      * To change settings of the common {@link FuturityWheel} which is used for wrapping
-     * in this method and {@link #shift(Future)} use<br/>
-     * <code>Futurity.builder.<br/>
-     * ... // configuration<br/>
+     * in this method and {@link #shift(Future)} use<br>
+     * <code>Futurity.builder.<br>
+     * ... // configuration<br>
      * .inject();
-     * </code><br/>
-     * Default settings are<br/>
-     * basicPoolPeriod = 1 ms<br/>
-     * tickDuration = 500 microseconds<br/>
+     * </code><br>
+     * Default settings are<br>
+     * basicPoolPeriod = 1 ms<br>
+     * tickDuration = 500 microseconds
      *
      * @param future {@link java.util.concurrent.Future} to wrap. This method doesn't change this future.
      * After wrapping you can continue to use it.
+     * @param pollPeriod custom period of checking {@code future} state. {@code future} would not be checked often
+     * then basicPoolPeriod of the common {@link FuturityWheel}.
+     * @param unit time unit of the {@code pollPeriod} parameter.
      * @param <V> {@code future} result type
      * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
      */
-    public static <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit unit) {
-        return CommonFuturityWheel.getCommon().shiftWithPoll(future, pollDuration, unit);
+    public static <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollPeriod, TimeUnit unit) {
+        return CommonFuturityWheel.getCommon().shiftWithPoll(future, pollPeriod, unit);
     }
 
     /**

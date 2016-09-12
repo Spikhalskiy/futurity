@@ -30,6 +30,13 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Entity of this class wraps {@link Future}s with {@link CompletableFuture}s and perform checks of futures states and
+ * notifying wrappers. {@link FuturityWheel} creates periodic task using common Futurity thread pool with the
+ * {@link #basicPoolPeriodNs} period, that checks all futures in the basic pool that were submitted with
+ * {@link #shift(Future)} and futures submitted with {@link #shiftWithPoll(Future, long, TimeUnit)}
+ * that should be check on this periodic task invocation based on the specified poll period.
+ */
 public class FuturityWheel {
     final static long JVM_EXIT_SHUTDOWN_TIMEOUT_MS = 200;
 
@@ -99,16 +106,19 @@ public class FuturityWheel {
      *
      * @param future {@link java.util.concurrent.Future} to wrap. This method doesn't change this future.
      * After wrapping you can continue to use it.
+     * @param pollPeriod custom period of checking {@code future} state. {@code future} would not be checked often
+     * then basicPoolPeriod of the common {@link FuturityWheel}.
+     * @param unit time unit of the {@code pollPeriod} parameter.
      * @param <V> {@code future} result type
      * @return {@link java.util.concurrent.CompletableFuture} that reflects changes in the {@code future}.
      */
-    public <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollDuration, TimeUnit unit) {
+    public <V> CompletableFuture<V> shiftWithPoll(Future<V> future, long pollPeriod, TimeUnit unit) {
         CompletableFuture<V> result = trivialCast(future);
         if (result != null) {
             return result;
         }
         result = new CompletableFuture<>();
-        submit(future, result, unit.toNanos(pollDuration));
+        submit(future, result, unit.toNanos(pollPeriod));
         return result;
     }
 
