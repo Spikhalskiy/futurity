@@ -1,4 +1,4 @@
-# futurity [![Build Status](https://travis-ci.org/Spikhalskiy/futurity.svg?branch=master)](https://travis-ci.org/Spikhalskiy/futurity)
+# futurity [![Build Status](https://travis-ci.org/Spikhalskiy/futurity.svg?branch=master)](https://travis-ci.org/Spikhalskiy/futurity) [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.spikhalskiy.futurity/futurity-core/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.spikhalskiy.futurity/futurity-core)
 A simple tool to convert plain old Java Future to CompletableFuture
 
 ## How to use?
