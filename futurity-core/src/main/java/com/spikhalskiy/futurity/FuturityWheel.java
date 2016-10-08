@@ -22,8 +22,10 @@ import org.jctools.queues.MpscChunkedArrayQueue;
 
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
@@ -41,13 +43,19 @@ public class FuturityWheel {
     final static long JVM_EXIT_SHUTDOWN_TIMEOUT_MS = 200;
 
     protected final static long BASIC_POOLING = -1;
-    protected final static int MAX_QUEUE_SIZE = 5000;
+    protected final static int MAX_QUEUE_SIZE = 50000;
 
     protected final long basicPoolPeriodNs;
+
+    protected final ScheduledExecutorService executorService;
     protected final ScheduledFuture<?> scheduledFuture;
+    protected final Runnable WORK = new Work();
+    protected final Runnable EMERGENCY_DRAIN_WORK = new EmergencyDrainWork();
+
     protected final HashedWheelTimer timerWheel;
     protected final MpscChunkedArrayQueue<WorkTask>
             taskSubmissions = new MpscChunkedArrayQueue<>(50, MAX_QUEUE_SIZE, true);
+    protected final Queue<WorkTask> taskSubmissionsEmergent = new ConcurrentLinkedQueue<>();
     protected final MpscChunkedArrayQueue<StateChange> stateChanges = new MpscChunkedArrayQueue<>(5, 10, true);
 
     protected final LinkedList<WorkTask> basicPooling = new LinkedList<>();
@@ -60,17 +68,32 @@ public class FuturityWheel {
     //migration
     protected FuturityWheel migrationWheel;
 
+    /**
+     * @param executorService to run polling/checking task. It should be single-threaded,
+     * {@link FuturityWheel} implementation relies on it. (To be sure that no parallel tasks permitted)
+     * @param basicPoolPeriodNs period to run polling from queue/future checking tasks in nanseconds
+     * @param tickDurationNs resolution of underlying HashedWheelTimer, which is used for custom pooling pools
+     */
     protected FuturityWheel(ScheduledExecutorService executorService,
                   long basicPoolPeriodNs, long tickDurationNs) {
         this(executorService, basicPoolPeriodNs, tickDurationNs, 512);
     }
 
-    protected FuturityWheel(ScheduledExecutorService scheduledExecutorService,
+    /**
+     * @param executorService to run polling/checking task. It should be single-threaded,
+     * {@link FuturityWheel} implementation relies on it. (To be sure that no parallel tasks permitted)
+     * @param basicPoolPeriodNs period to run polling from queue/future checking tasks in nanseconds
+     * @param tickDurationNs resolution of underlying HashedWheelTimer, which is used for custom pooling pools
+     * @param ticksPerWheel count of ticks in wheel, larger value - more efficient hashing
+     * (less tasks would be on the same tick)
+     */
+    protected FuturityWheel(ScheduledExecutorService executorService,
           long basicPoolPeriodNs, long tickDurationNs, int ticksPerWheel) {
-        this.timerWheel = new HashedWheelTimer(tickDurationNs, TimeUnit.NANOSECONDS, ticksPerWheel);
+        this.executorService = executorService;
         this.basicPoolPeriodNs = basicPoolPeriodNs;
-        this.scheduledFuture = scheduledExecutorService
-                .scheduleAtFixedRate(new Work(), basicPoolPeriodNs, basicPoolPeriodNs, TimeUnit.NANOSECONDS);
+        this.timerWheel = new HashedWheelTimer(tickDurationNs, TimeUnit.NANOSECONDS, ticksPerWheel);
+        this.scheduledFuture = executorService
+                .scheduleAtFixedRate(WORK, basicPoolPeriodNs, basicPoolPeriodNs, TimeUnit.NANOSECONDS);
 
         this.jvmShutdownHook = new Thread() {
             @Override
@@ -165,7 +188,13 @@ public class FuturityWheel {
         if (migrationWheel != null) {
             migrationWheel.submit(workTask);
         } else {
-            taskSubmissions.relaxedOffer(workTask);
+            boolean offerSuccess = taskSubmissions.relaxedOffer(workTask);
+            if (!offerSuccess) {
+                //queue if full
+                //TODO add logging
+                executorService.submit(EMERGENCY_DRAIN_WORK);
+                taskSubmissionsEmergent.offer(workTask);
+            }
         }
     }
 
@@ -184,6 +213,126 @@ public class FuturityWheel {
         });
     }
 
+    private void executeStateChange() {
+        StateChange stateChange = stateChanges.relaxedPoll();
+        if (stateChange != null) {
+            stateChange.run();
+        }
+    }
+
+    private void manageSubmissions() {
+        // implement wheel migration code here related to submissions
+        if (migrationWheel != null) {
+            migrateSubmissions();
+        } else {
+            WorkTask task;
+            while ((task = taskSubmissionsEmergent.poll()) != null) {
+                manageSubmission(task);
+            }
+            while ((task = taskSubmissions.relaxedPoll()) != null) {
+                manageSubmission(task);
+            }
+        }
+    }
+
+    private void manageSubmission(WorkTask task) {
+        if (!task.proceed()) { //if task already completed - don't schedule anything
+            long poolingNs = task.getPoolingNs();
+            if (poolingNs == BASIC_POOLING) {
+                basicPooling.add(task);
+            } else {
+                long scheduleIntervalNs = Math.max(poolingNs - basicPoolPeriodNs, 0);
+                timerWheel.newTimeout(scheduleIntervalNs, TimeUnit.NANOSECONDS, task);
+            }
+        }
+    }
+
+    private void proceedBasicTasks() {
+        for (Iterator<WorkTask> it = basicPooling.iterator(); it.hasNext();) {
+            WorkTask task = it.next();
+            if (task.proceed()) {
+                it.remove();
+            }
+        }
+    }
+
+    private void proceedWheelTasks() {
+        timerWheel.expireTimers();
+    }
+
+    private void postProcess() {
+        switch (state) {
+        case MIGRATING:
+            migrateScheduled();
+            if (System.currentTimeMillis() >= hardShutdownTimestamp) {
+                finalShutdown();
+            }
+            break;
+        case SHUTDOWN:
+            if (System.currentTimeMillis() >= hardShutdownTimestamp) {
+                killScheduledAndSubmissions("Futurity that track this task has been shut down");
+                finalShutdown();
+            }
+            break;
+        case SHUTDOWN_JVM:
+            if (System.currentTimeMillis() >= hardShutdownTimestamp) {
+                killScheduledAndSubmissions("Futurity that track this task has been shut down as a result of JVM shutdown");
+                finalShutdown();
+            }
+            break;
+        }
+    }
+
+    private void finalShutdown() {
+        scheduledFuture.cancel(false);
+        Runtime.getRuntime().removeShutdownHook(jvmShutdownHook);
+        state = WheelState.TERMINATED;
+        CommonFuturityWheel.decrementWheelsCount();
+    }
+
+    private void killScheduledAndSubmissions(String exceptionMessage) {
+        WorkTask task;
+        while ((task = taskSubmissions.poll()) != null) {
+            migrationWheel.submit(task);
+        }
+        basicPooling.stream().map(WorkTask::getCompletableFuture).forEach(
+                completableFuture -> completableFuture.completeExceptionally(
+                        new IllegalStateException(exceptionMessage)));
+        basicPooling.clear();
+        for (Timer timer : timerWheel.scheduled()) {
+            ((WorkTask)timer.getTask()).getCompletableFuture().completeExceptionally(
+                    new IllegalStateException(exceptionMessage));
+            timer.cancel();
+        }
+    }
+
+    private void migrateSubmissions() {
+        WorkTask task;
+        while ((task = taskSubmissionsEmergent.poll()) != null) {
+            migrationWheel.submit(task);
+        }
+        while ((task = taskSubmissions.poll()) != null) {
+            migrationWheel.submit(task);
+        }
+    }
+
+    private void migrateScheduled() {
+        basicPooling.forEach(migrationWheel::submit);
+        basicPooling.clear();
+        for (Timer timer : timerWheel.scheduled()) {
+            migrationWheel.submit((WorkTask)timer.getTask());
+            timer.cancel();
+        }
+    }
+
+    private class EmergencyDrainWork implements Runnable {
+        @Override
+        public void run() {
+            manageSubmissions();
+        }
+    }
+
+
     private class Work implements Runnable {
         @Override
         public void run() {
@@ -192,108 +341,6 @@ public class FuturityWheel {
             proceedBasicTasks();
             proceedWheelTasks();
             postProcess();
-        }
-
-        private void executeStateChange() {
-            StateChange stateChange = stateChanges.relaxedPoll();
-            if (stateChange != null) {
-                stateChange.run();
-            }
-        }
-
-        private void manageSubmissions() {
-            // implement wheel migration code here related to submissions
-            if (migrationWheel != null) {
-                migrateSubmissions();
-            } else {
-                WorkTask task = taskSubmissions.relaxedPoll();
-                while (task != null) {
-                    long poolingNs = task.getPoolingNs();
-                    if (poolingNs == BASIC_POOLING) {
-                        basicPooling.add(task);
-                    } else {
-                        long scheduleIntervalNs = Math.max(poolingNs - basicPoolPeriodNs, 0);
-                        timerWheel.newTimeout(scheduleIntervalNs, TimeUnit.NANOSECONDS, task);
-                    }
-                    task = taskSubmissions.relaxedPoll();
-                }
-            }
-        }
-
-        private void proceedBasicTasks() {
-            for (Iterator<WorkTask> it = basicPooling.iterator(); it.hasNext();) {
-                WorkTask task = it.next();
-                if (task.proceed()) {
-                    it.remove();
-                }
-            }
-        }
-
-        private void proceedWheelTasks() {
-            timerWheel.expireTimers();
-        }
-
-        private void postProcess() {
-            switch (state) {
-                case MIGRATING:
-                    migrateScheduled();
-                    if (System.currentTimeMillis() >= hardShutdownTimestamp) {
-                        finalShutdown();
-                    }
-                    break;
-                case SHUTDOWN:
-                    if (System.currentTimeMillis() >= hardShutdownTimestamp) {
-                        killScheduledAndSubmissions("Futurity that track this task has been shut down");
-                        finalShutdown();
-                    }
-                    break;
-                case SHUTDOWN_JVM:
-                    if (System.currentTimeMillis() >= hardShutdownTimestamp) {
-                        killScheduledAndSubmissions("Futurity that track this task has been shut down as a result of JVM shutdown");
-                        finalShutdown();
-                    }
-                    break;
-            }
-        }
-
-        private void finalShutdown() {
-            scheduledFuture.cancel(false);
-
-            Runtime.getRuntime().removeShutdownHook(jvmShutdownHook);
-            state = WheelState.TERMINATED;
-            CommonFuturityWheel.decrementWheelsCount();
-        }
-
-        private void killScheduledAndSubmissions(String exceptionMessage) {
-            WorkTask task;
-            while ((task = taskSubmissions.poll()) != null) {
-                migrationWheel.submit(task);
-            }
-            basicPooling.stream().map(WorkTask::getCompletableFuture).forEach(
-                    completableFuture -> completableFuture.completeExceptionally(
-                        new IllegalStateException(exceptionMessage)));
-            basicPooling.clear();
-            for (Timer timer : timerWheel.scheduled()) {
-                ((WorkTask)timer.getTask()).getCompletableFuture().completeExceptionally(
-                        new IllegalStateException(exceptionMessage));
-                timer.cancel();
-            }
-        }
-
-        private void migrateSubmissions() {
-            WorkTask task;
-            while ((task = taskSubmissions.poll()) != null) {
-                migrationWheel.submit(task);
-            }
-        }
-
-        private void migrateScheduled() {
-            basicPooling.forEach(migrationWheel::submit);
-            basicPooling.clear();
-            for (Timer timer : timerWheel.scheduled()) {
-                migrationWheel.submit((WorkTask)timer.getTask());
-                timer.cancel();
-            }
         }
     }
 
@@ -349,10 +396,12 @@ public class FuturityWheel {
                 return true;
             }
 
-            if (migrationWheel != null) {
-                migrationWheel.submit(this);
-            } else if (timer != null) {
-                timerWheel.rescheduleTimeout(poolingNs, TimeUnit.NANOSECONDS, timer);
+            if (timer != null) {
+                if (migrationWheel != null) {
+                    migrationWheel.submit(this);
+                } else {
+                    timerWheel.rescheduleTimeout(poolingNs, TimeUnit.NANOSECONDS, timer);
+                }
             }
 
             return false;
