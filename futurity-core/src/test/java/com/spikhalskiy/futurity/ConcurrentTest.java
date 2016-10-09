@@ -94,7 +94,7 @@ public class ConcurrentTest {
 
         Futures.allAsList(submitFutures).get(5, TimeUnit.MILLISECONDS);
 
-        sleep(10000);
+        sleep(2 * CUSTOM_POLL_PERIOD_MS);
 
         for (int i = 0; i < THREADS_COUNT; i++) {
             for (int j = 0; j < COUNT_PER_THREAD; j++) {

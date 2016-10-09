@@ -7,7 +7,7 @@ A simple tool to convert plain old Java Future to CompletableFuture
 <dependency>
     <groupId>com.spikhalskiy.futurity</groupId>
     <artifactId>futurity-core</artifactId>
-    <version>0.3-RC1</version>
+    <version>0.3-RC2</version>
 </dependency>
 ```
 
