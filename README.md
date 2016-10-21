@@ -19,12 +19,16 @@ CompletableFuture profit = Futurity.shift(oldFuture);
 ## Motivation
 
 You have an old code, which is asynchronous, but uses pre Java 8 API
-and you want to convert Future to CompletableFuture to get full power
+and you want to convert Future to CompletableFuture to get a full power
 of the new api.
 
-It could be tricky and require update of dependencies. For example,
-if library that perform IO doesn't support nor CompletableFuture neither
-callback API.
+It could require an update of 3rd party dependencies.
+And even in this case it could be a bit tricky
+if a library that performs IO doesn't support nor CompletableFuture 
+neither callback API.
+If you have large amount of own code under Future -
+it could require big refactoring to introduce 
+callbacks or a CompletableFuture model.
 
 The best that you can do without large immediate reworking from 
 related [StackOverflow discussion](https://stackoverflow.com/questions/23301598/transform-java-future-into-a-completablefuture) is:

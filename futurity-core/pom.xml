@@ -12,6 +12,7 @@
     <version>0.3-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>futurity/core</name>
+    <description>Core component of Futurity - a simple tool to convert Future to CompletableFuture</description>
 
     <build>
         <plugins>
