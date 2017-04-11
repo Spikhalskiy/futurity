@@ -14,6 +14,7 @@
  */
 package com.spikhalskiy.futurity;
 
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -24,6 +25,7 @@ import java.util.jar.Pack200;
 public class FutureWithSource<T> implements Future<T> {
     private final AtomicReference<T> futureResult;
     private final AtomicReference<? extends Throwable> exceptionResult;
+    private volatile boolean cancelled;
 
     public FutureWithSource(AtomicReference<T> futureResult) {
         this(futureResult, null);
@@ -36,33 +38,28 @@ public class FutureWithSource<T> implements Future<T> {
 
     @Override
     public boolean cancel(boolean mayInterruptIfRunning) {
-        return false;
+        cancelled = true;
+        return true;
     }
 
     @Override
     public boolean isCancelled() {
-        return false;
+        return cancelled;
     }
 
     @Override
     public boolean isDone() {
         return futureResult != null && futureResult.get() != null ||
-               exceptionResult != null && exceptionResult.get() != null;
+               exceptionResult != null && exceptionResult.get() != null ||
+               cancelled;
     }
 
     @Override
     public T get() throws InterruptedException, ExecutionException {
-        Throwable t = exceptionResult != null ? exceptionResult.get() : null;
-        T value = futureResult != null ? futureResult.get() : null;
-        while (t == null && value == null) {
-            t = exceptionResult != null ? exceptionResult.get() : null;
-            value = futureResult != null ? futureResult.get() : null;
-        }
-
-        if (t != null) {
-            throw new ExecutionException(t);
-        } else {
-            return value;
+        try {
+            return get(Long.MAX_VALUE, TimeUnit.DAYS);
+        } catch (TimeoutException e) {
+            throw new ExecutionException(e);
         }
     }
 
@@ -73,7 +70,7 @@ public class FutureWithSource<T> implements Future<T> {
         T value = futureResult != null ? futureResult.get() : null;
         boolean isTimeout = startTime + unit.toMillis(timeout) > System.currentTimeMillis();
 
-        while (value == null && t == null && !isTimeout) {
+        while (value == null && t == null && !isTimeout && !cancelled) {
             t = exceptionResult != null ? exceptionResult.get() : null;
             value = futureResult != null ? futureResult.get() : null;
             isTimeout = startTime + unit.toMillis(timeout) > System.currentTimeMillis();
@@ -83,6 +80,8 @@ public class FutureWithSource<T> implements Future<T> {
             throw new TimeoutException();
         } else if (t != null) {
             throw new ExecutionException(t);
+        } else if (cancelled) {
+            throw new CancellationException();
         } else {
             return value;
         }

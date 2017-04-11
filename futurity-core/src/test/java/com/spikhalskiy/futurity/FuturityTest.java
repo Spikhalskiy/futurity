@@ -158,4 +158,15 @@ public class FuturityTest {
                 .pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
                 .atMost(6, TimeUnit.SECONDS).until(shift::isDone);
     }
+
+    @Test
+    public void sourceFutureHasBeenCancelled_correctlyFillCompletableFuture() throws InterruptedException {
+        Future<Boolean> origin = new FutureWithSource<>(new AtomicReference<>());
+        CompletableFuture<Boolean> shifted = Futurity.shift(origin);
+        assertFalse(shifted.isDone());
+        origin.cancel(false);
+        await().pollInterval(1, TimeUnit.MILLISECONDS).pollDelay(0, TimeUnit.MILLISECONDS)
+               .atMost(1, TimeUnit.SECONDS).until(shifted::isDone);
+        assertTrue(shifted.isCancelled());
+    }
 }
