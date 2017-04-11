@@ -4,7 +4,7 @@
 
     <groupId>com.spikhalskiy.futurity</groupId>
     <artifactId>futurity-parent</artifactId>
-    <version>0.3-SNAPSHOT</version>
+    <version>0.3-RC3</version>
     <packaging>pom</packaging>
     <name>futurity</name>
     <description>A simple tool to convert plain old Java Future to CompletableFuture</description>
@@ -27,7 +27,7 @@
         <connection>scm:git:https://github.com/Spikhalskiy/futurity.git</connection>
         <developerConnection>scm:git:https://github.com/Spikhalskiy/futurity.git</developerConnection>
         <url>https://github.com/Spikhalskiy/futurity</url>
-        <tag>HEAD</tag>
+        <tag>v0.3-RC3</tag>
     </scm>
 
     <properties>
