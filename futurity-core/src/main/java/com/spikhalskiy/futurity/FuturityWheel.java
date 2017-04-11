@@ -23,6 +23,7 @@ import org.jctools.queues.MpscChunkedArrayQueue;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -392,6 +393,8 @@ public class FuturityWheel {
                     completableFuture.completeExceptionally(new RuntimeException("Futurity thread has been stopped"));
                 } catch (ExecutionException e) {
                     completableFuture.completeExceptionally(e.getCause());
+                } catch (CancellationException e) {
+                    completableFuture.cancel(false);
                 }
                 return true;
             }
