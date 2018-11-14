@@ -55,9 +55,9 @@ public class FuturityWheel {
 
     protected final HashedWheelTimer timerWheel;
     protected final MpscChunkedArrayQueue<WorkTask>
-            taskSubmissions = new MpscChunkedArrayQueue<>(50, MAX_QUEUE_SIZE, true);
+            taskSubmissions = new MpscChunkedArrayQueue<>(50, MAX_QUEUE_SIZE);
     protected final Queue<WorkTask> taskSubmissionsEmergent = new ConcurrentLinkedQueue<>();
-    protected final MpscChunkedArrayQueue<StateChange> stateChanges = new MpscChunkedArrayQueue<>(5, 10, true);
+    protected final MpscChunkedArrayQueue<StateChange> stateChanges = new MpscChunkedArrayQueue<>(5, 10);
 
     protected final LinkedList<WorkTask> basicPooling = new LinkedList<>();
     protected final Thread jvmShutdownHook;
